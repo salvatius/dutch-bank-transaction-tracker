@@ -1,0 +1,25 @@
+{
+    "bank_name": "ING",
+    "delimiter": ";",
+    "quotechar": "\"",
+    "encoding": "utf-8",
+    "has_header": true,
+    "decimal_separator": ",",
+    "date_format": "%Y%m%d",
+    "field_mapping": {
+        "date": "Datum",
+        "description": "Naam / Omschrijving",
+        "own_account": "Rekening",
+        "counter_account": "Tegenrekening",
+        "code": "Code",
+        "direction": "Af Bij",
+        "amount": "Bedrag (EUR)",
+        "mutation_type": "Mutatiesoort",
+        "notes": "Mededelingen",
+        "balance_after": "Saldo na mutatie"
+    },
+    "direction_values": {
+        "debit": "Af",
+        "credit": "Bij"
+    }
+}
