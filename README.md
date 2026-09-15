@@ -10,7 +10,6 @@ Built as a learning project to go deeper with Python, while solving a real probl
 - **Duplicate detection** — SHA-256 hashing of transaction records prevents re-importing the same transaction twice, even across overlapping export files or banks
 - **Local SQLite storage** — all data stays on your machine, no cloud service involved
 - **Interactive categorization** — CLI workflow to assign categories to new transactions as they come in
-- **[Add any others: reporting / totals per category / monthly summaries]**
 
 ## Why this exists
 
@@ -43,9 +42,7 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-python main.py --import path/to/export.csv --bank ing
-python main.py --import path/to/export.csv --bank knab
-python main.py --import path/to/export.csv --bank sns
+python import.py
 ```
 
 You'll be prompted to categorize any new, uncategorized transactions.
@@ -60,4 +57,4 @@ This tool is designed to run entirely locally. Your CSV exports and database are
 
 ## License
 
-[MIT / choose one — add a LICENSE file via GitHub's "Add file" when creating the repo]
+MIT
