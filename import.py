@@ -1,15 +1,14 @@
 import json
+import argparse
 import sqlite3
 from pathlib import Path
 import csv
 from datetime import datetime
 import hashlib
+from db_helpers import BASE_DIR, DB_PATH, get_category_label, describe_rule, create_new_category
 
 # This makes all paths relative to where THIS script lives,
 # regardless of what folder you run it from.
-BASE_DIR = Path(__file__).parent
-
-DB_PATH = BASE_DIR / "finance.db"
 SCHEMA_PATH = BASE_DIR / "schemas" / "ing.json"
 IMPORT_PATH = BASE_DIR / "imports" / "ing_sample.csv"
 
@@ -21,6 +20,14 @@ class ImportAborted(Exception):
 def load_schema(schema_path):
     with open(schema_path, "r", encoding="utf-8") as f:
         return json.load(f)
+def parse_args():
+    parser = argparse.ArgumentParser(description="Import bank transactions.")
+    parser.add_argument(
+        "--auto-accept",
+        action="store_true",
+        help="Automatically accept rule-matched categorizations without confirmation."
+    )
+    return parser.parse_args()
 
 def find_schema_for_file(filename, schemas_dir):
     """Guess which schema applies to a file, based on filename prefix."""
@@ -133,6 +140,68 @@ def insert_transaction(cursor, row, bank_name):
         row["category_id"],
         row["rule_id"],
     ))
+    return cursor.lastrowid
+
+def prompt_for_split(cursor, row, transaction_amount):
+    """Interactively split a transaction's amount across multiple categories.
+    Returns a list of (category_id, amount) tuples."""
+    print(f"\n-- Splitting transaction (total: {transaction_amount}) --")
+    splits = []
+    remaining = transaction_amount
+
+    while True:
+        print(f"\nRemaining to allocate: {round(remaining, 2)}")
+        cursor.execute("SELECT id, main_type, subcategory FROM categories ORDER BY main_type, subcategory")
+        categories = cursor.fetchall()
+        valid_ids = {cat_id for cat_id, _, _ in categories}
+        for cat_id, main_type, subcategory in categories:
+            print(f"  [{cat_id}] {main_type} / {subcategory}")
+
+        cat_choice = input("Category ID for this split: ").strip()
+        if not cat_choice.isdigit() or int(cat_choice) not in valid_ids:
+            print(f"'{cat_choice}' is not a valid category ID.")
+            continue
+        split_category_id = int(cat_choice)
+
+        amount_choice = input("Amount for this split: ").strip()
+        try:
+            split_amount = float(amount_choice.replace(",", "."))
+        except ValueError:
+            print(f"'{amount_choice}' is not a valid amount.")
+            continue
+
+        splits.append((split_category_id, split_amount))
+        remaining = round(remaining - split_amount, 2)
+
+        if remaining <= 0:
+            break
+
+        more = input("Add another split? (y/n): ").strip().lower()
+        if more != "y":
+            break
+
+    total_entered = round(sum(amount for _, amount in splits), 2)
+    if total_entered != round(transaction_amount, 2):
+        print(f"\nSplits total {total_entered}, but transaction is {round(transaction_amount, 2)}. "
+              f"They must match exactly.")
+        print("Let's redo this split from scratch.")
+        return prompt_for_split(cursor, row, transaction_amount)
+
+    return splits
+
+def save_splits(cursor, transaction_id, splits):
+    """Save split rows and update the parent transaction's category_id to the largest split."""
+    for category_id, amount in splits:
+        cursor.execute(
+            "INSERT INTO transaction_splits (transaction_id, category_id, amount) VALUES (?, ?, ?)",
+            (transaction_id, category_id, amount)
+        )
+
+    largest_category_id = max(splits, key=lambda s: s[1])[0]
+    cursor.execute(
+        "UPDATE transactions SET category_id = ? WHERE id = ?",
+        (largest_category_id, transaction_id)
+    )
 
 def find_matching_rule(cursor, row):
     """Return (category_id, rule_id) if a rule matches this row, else (None, None)."""
@@ -153,35 +222,6 @@ def find_matching_rule(cursor, row):
             return category_id, rule_id
 
     return None, None
-
-def get_category_label(cursor, category_id):
-    cursor.execute("SELECT main_type, subcategory FROM categories WHERE id = ?", (category_id,))
-    result = cursor.fetchone()
-    return f"{result[0]} / {result[1]}" if result else "unknown category"
-
-def describe_rule(cursor, rule_id):
-    cursor.execute(
-        "SELECT field, match_type, value, value2 FROM rule_conditions WHERE rule_id = ?",
-        (rule_id,)
-    )
-    conditions = cursor.fetchall()
-    parts = []
-    for field, match_type, value, value2 in conditions:
-        if match_type == "contains":
-            parts.append(f"{field} contains '{value}'")
-        elif match_type == "exact":
-            parts.append(f"{field} = '{value}'")
-        elif match_type == "gt":
-            parts.append(f"{field} > {value}")
-        elif match_type == "lt":
-            parts.append(f"{field} < {value}")
-        elif match_type == "gte":
-            parts.append(f"{field} >= {value}")
-        elif match_type == "lte":
-            parts.append(f"{field} <= {value}")
-        elif match_type == "between":
-            parts.append(f"{field} between {value} and {value2}")
-    return " AND ".join(parts)
 
 def condition_matches(row, field, match_type, value, value2=None):
     row_value = row.get(field)
@@ -221,42 +261,6 @@ def condition_matches(row, field, match_type, value, value2=None):
 
     return False
 
-def create_new_category(cursor):
-    """Interactively create a new category. Returns its id, or None if cancelled."""
-    print("\n-- New category --")
-    print("  [1] inkomen")
-    print("  [2] uitgaven")
-    print("  [3] transfer")
-    print("  [C] Cancel")
-    type_choice = input("Main type: ").strip().upper()
-
-    type_map = {"1": "inkomen", "2": "uitgaven", "3": "transfer"}
-    if type_choice == "C" or type_choice not in type_map:
-        return None
-
-    main_type = type_map[type_choice]
-    subcategory = input("New subcategory name: ").strip()
-    if not subcategory:
-        print("Subcategory name cannot be empty. Cancelled.")
-        return None
-
-    try:
-        cursor.execute(
-            "INSERT INTO categories (main_type, subcategory) VALUES (?, ?)",
-            (main_type, subcategory)
-        )
-    except sqlite3.IntegrityError:
-        print(f"'{main_type} / {subcategory}' already exists.")
-        cursor.execute(
-            "SELECT id FROM categories WHERE main_type = ? AND subcategory = ?",
-            (main_type, subcategory)
-        )
-        return cursor.fetchone()[0]
-
-    new_id = cursor.lastrowid
-    print(f"Created category [{new_id}] {main_type} / {subcategory}")
-    return new_id
-
 def prompt_for_category(cursor, row):
     """Ask the user to categorize an unmatched transaction, optionally creating a rule."""
     print("\n--- Uncategorized transaction ---")
@@ -293,9 +297,9 @@ def prompt_for_category(cursor, row):
         for cat_id, main_type, subcategory in categories:
             print(f"  [{cat_id}] {main_type} / {subcategory}")
         if suggested_type and not show_all:
-            print("  [A] Show all categories instead")
-        print("  [N] Create a new category")
-        print("  [S] Skip this transaction (leave uncategorized, stop import)")
+                    print("  [N] Create a new category")
+                    print("  [X] Split this transaction across multiple categories")
+                    print("  [S] Skip this transaction (leave uncategorized, stop import)")
 
         choice = input("Category ID: ").strip()
 
@@ -308,6 +312,9 @@ def prompt_for_category(cursor, row):
             if new_id is not None:
                 chosen_id = new_id
             continue
+
+        if choice.upper() == "X":
+            return "SPLIT", None
 
         if choice.upper() == "S":
             raise ImportAborted("User chose to stop the import.")
@@ -388,7 +395,7 @@ def prompt_for_category(cursor, row):
 
     return chosen_id, None
 
-def process_file(csv_path, schema, cursor):
+def process_file(csv_path, schema, cursor, auto_accept=False):
     print(f"\n=== Processing {csv_path.name} (bank: {schema['bank_name']}) ===")
     raw_rows = read_bank_csv(csv_path, schema)
     print(f"Read {len(raw_rows)} rows")
@@ -410,24 +417,39 @@ def process_file(csv_path, schema, cursor):
 
         if category_id is None:
             category_id, rule_id = prompt_for_category(cursor, normalized)
+        elif auto_accept:
+            label = get_category_label(cursor, category_id)
+            rule_desc = describe_rule(cursor, rule_id)
+            print(f"Auto: {normalized['description']} -> {label}  (rule: {rule_desc})")
         else:
             label = get_category_label(cursor, category_id)
             rule_desc = describe_rule(cursor, rule_id)
             print(f"\nAuto-categorized: {normalized['description']}")
             print(f"  -> {label}  (matched rule: {rule_desc})")
-            confirm = input("Accept? (y = accept, n = choose different category): ").strip().lower()
-            if confirm != "y":
+            confirm = input("Accept? (y = accept, n = choose different category, x = split): ").strip().lower()
+            if confirm == "x":
+                category_id, rule_id = "SPLIT", None
+            elif confirm != "y":
                 category_id, rule_id = prompt_for_category(cursor, normalized)
 
         normalized["category_id"] = category_id
         normalized["rule_id"] = rule_id
 
-        insert_transaction(cursor, normalized, schema["bank_name"])
+        if category_id == "SPLIT":
+            normalized["category_id"] = None
+            transaction_id = insert_transaction(cursor, normalized, schema["bank_name"])
+            splits = prompt_for_split(cursor, normalized, normalized["amount"])
+            save_splits(cursor, transaction_id, splits)
+        else:
+            insert_transaction(cursor, normalized, schema["bank_name"])
+
         inserted_count += 1
 
     print(f"Inserted: {inserted_count}, Skipped (duplicates): {skipped_count}")
 
 if __name__ == "__main__":
+    args = parse_args()
+
     imports_dir = BASE_DIR / "imports"
     schemas_dir = BASE_DIR / "schemas"
 
@@ -448,7 +470,7 @@ if __name__ == "__main__":
 
             schema = load_schema(schema_path)
             try:
-                process_file(csv_path, schema, cursor)
+                process_file(csv_path, schema, cursor, auto_accept=args.auto_accept)
                 conn.commit()
                 mark_as_imported(csv_path)
             except ImportAborted:

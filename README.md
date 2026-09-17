@@ -1,19 +1,25 @@
 # Dutch Bank Transaction Tracker
 
-A Python tool for importing, deduplicating, and categorizing personal bank transactions from Dutch bank CSV exports (currently ING, Knab, and SNS/ASN) — stored locally in SQLite, with an interactive CLI workflow for assigning categories.
+A Python tool for importing, deduplicating, and categorizing personal bank transactions from Dutch bank CSV exports (currently ING; Knab and SNS/ASN planned) — stored locally in SQLite, with an interactive CLI workflow for assigning categories, a rules engine that learns and auto-applies past categorizations, and CSV/Excel export for manual review.
 
 Built as a learning project to go deeper with Python, while solving a real problem: getting a clear, private, self-hosted view of personal spending across multiple banks without uploading bank data to a third-party app.
 
 ## Features
 
-- **Multi-bank CSV import** — each bank has its own parser (ING, Knab, SNS/ASN) behind a common interface, so all transactions land in one consistent format regardless of source
-- **Duplicate detection** — SHA-256 hashing of transaction records prevents re-importing the same transaction twice, even across overlapping export files or banks
+- **Multi-bank CSV import** — each bank's CSV format and column layout is defined in a schema file (`schemas/*.json`); transactions are translated into one consistent internal format regardless of source
+- **Multi-file scanning** — drop one or more bank export CSVs into `imports/`; the importer picks up every new file automatically and marks each as processed (`.imported`) so re-running never double-imports
+- **Duplicate detection** — SHA-256 hashing of transaction records prevents re-importing the same transaction twice, even across overlapping export files
+- **Rules engine** — categorize a transaction once, optionally save it as a rule, and future matching transactions are categorized automatically. Rules can match on description, notes, counter account, own account, amount (exact/greater-than/less-than/between), and direction (debit/credit), combined with AND logic, with priority ordering to resolve conflicts between overlapping rules
+- **Auto-accept mode** (`--auto-accept`) — skip per-transaction confirmation for rule-matched rows once you trust your ruleset; unmatched transactions still prompt as normal
+- **Transaction splitting** — allocate a single transaction across multiple categories (e.g. one payment covering two budget categories), with validation that split amounts sum exactly to the transaction total
+- **Category management** — add, rename, reclassify, or delete categories via CLI, with safeguards against deleting categories still in use
+- **Rule management** — list, reprioritize, edit, or delete rules, including detection of "dead" rules that can never fire because a broader, higher-priority rule already matches everything they would
+- **CSV & Excel export** — export transactions (optionally filtered by date range, category, or uncategorized-only) to a Dutch-formatted CSV or a formatted `.xlsx` file with dropdown data validation on the category columns
 - **Local SQLite storage** — all data stays on your machine, no cloud service involved
-- **Interactive categorization** — CLI workflow to assign categories to new transactions as they come in
 
 ## Why this exists
 
-Most budgeting tools either want you to link your bank accounts to a third party, or are locked into a single bank's export format. This project keeps everything local, supports multiple Dutch banks side by side, and gives full control over how transactions are parsed, deduplicated, and categorized — while being a practical way to learn Python fundamentals (file I/O, hashing, SQLite, CLI design, module design) on a real, multi-source dataset.
+Most budgeting tools either want you to link your bank accounts to a third party, or are locked into a single bank's export format. This project keeps everything local, is designed to support multiple Dutch banks side by side, and gives full control over how transactions are parsed, deduplicated, and categorized — while being a practical way to learn Python fundamentals (file I/O, hashing, SQLite, CLI design, module design) on a real, personal dataset.
 
 ## Supported banks
 
@@ -26,30 +32,80 @@ Most budgeting tools either want you to link your bank accounts to a third party
 ## Tech stack
 
 - Python 3.x
-- SQLite (via `sqlite3` standard library)
+- SQLite (via the `sqlite3` standard library)
 - `hashlib` for duplicate detection
+- `openpyxl` for Excel export
 
 ## Getting started
 
 ```bash
-git clone https://github.com/yourname/dutch-bank-transaction-tracker.git
+git clone https://github.com/salvatius/dutch-bank-transaction-tracker.git
 cd dutch-bank-transaction-tracker
 python -m venv venv
 venv\Scripts\activate      # Windows
 pip install -r requirements.txt
 ```
 
+The database (`finance.db`) is created automatically the first time you run `import.py`.
+
 ## Usage
+
+### Import transactions
+
+Place one or more bank export CSVs into `imports/`, then run:
 
 ```bash
 python import.py
 ```
 
-You'll be prompted to categorize any new, uncategorized transactions.
+Every new file is processed once; already-imported files (renamed with a `.imported` suffix) are skipped on future runs. You'll be prompted to categorize any transaction that doesn't match an existing rule, with the option to save your choice as a new rule.
+
+Skip confirmation for rule-matched transactions:
+
+```bash
+python import.py --auto-accept
+```
+
+### Export transactions
+
+To CSV (Dutch comma-decimal formatting):
+
+```bash
+python export.py
+python export.py --from 2026-01-01 --to 2026-01-31
+python export.py --category "uitgaven/boodschappen"
+python export.py --uncategorized
+```
+
+To Excel, with dropdown-validated category columns:
+
+```bash
+python export_excel.py
+```
+
+(Same `--from`, `--to`, `--category`, and `--uncategorized` filters apply.)
+
+Exports are written to `exports/`, timestamped, never overwritten.
+
+### Manage categories
+
+```bash
+python manage_categories.py
+```
+
+List, add, rename, reclassify, or delete categories.
+
+### Manage rules
+
+```bash
+python manage_rules.py
+```
+
+List rules (with dead/unreachable rules flagged), change priority, edit conditions, or delete a rule.
 
 ## Project status
 
-🚧 Actively in development. Current focus: [extending rule creation possibilities / categorization workflow].
+🚧 Actively in development. Current focus: a desktop GUI (tkinter) for reviewing and correcting categorized transactions.
 
 ## Privacy note
 

@@ -1,8 +1,16 @@
 venv/
 __pycache__/
+backups/
+exports/
+venv/
 *.pyc
 .env
 *.db
 *.sqlite
 *.sqlite3
 *.csv
+finance.db
+finance_*.db
+imports/*.csv
+imports/*.imported
+finance.db-journal
