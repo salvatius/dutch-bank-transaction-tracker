@@ -5,7 +5,7 @@ from pathlib import Path
 import csv
 from datetime import datetime
 import hashlib
-from db_helpers import BASE_DIR, DB_PATH, get_category_label, describe_rule, create_new_category
+from db_helpers import BASE_DIR, DB_PATH, get_category_label, describe_rule, create_new_category, get_schema_for_file
 
 # This makes all paths relative to where THIS script lives,
 # regardless of what folder you run it from.
@@ -20,6 +20,7 @@ class ImportAborted(Exception):
 def load_schema(schema_path):
     with open(schema_path, "r", encoding="utf-8") as f:
         return json.load(f)
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Import bank transactions.")
     parser.add_argument(
@@ -28,16 +29,6 @@ def parse_args():
         help="Automatically accept rule-matched categorizations without confirmation."
     )
     return parser.parse_args()
-
-def find_schema_for_file(filename, schemas_dir):
-    """Guess which schema applies to a file, based on filename prefix."""
-    prefix_map = {
-        "ing_": "ing.json",
-    }
-    for prefix, schema_file in prefix_map.items():
-        if filename.lower().startswith(prefix):
-            return schemas_dir / schema_file
-    return None
 
 def find_import_files(imports_dir):
     """Find CSV files not yet processed (i.e. without the .imported suffix)."""
@@ -71,12 +62,13 @@ def normalize_row(translated_row, schema):
     """Convert string values into proper types, using the schema's rules."""
     row = dict(translated_row)  # copy, so we don't mutate the original
 
+    decimal_sep = schema["decimal_separator"]
+
     # --- amount: "26,89" -> 26.89 ---
     raw_amount = row["amount"]
-    decimal_sep = schema["decimal_separator"]
     if decimal_sep != ".":
         raw_amount = raw_amount.replace(decimal_sep, ".")
-    row["amount"] = float(raw_amount)
+    amount_value = float(raw_amount)
 
     # --- balance_after: "71,19" -> 71.19 (only if present) ---
     if row.get("balance_after"):
@@ -89,12 +81,21 @@ def normalize_row(translated_row, schema):
     date_obj = datetime.strptime(row["date"], schema["date_format"])
     row["date"] = date_obj.strftime("%Y-%m-%d")
 
-    # --- direction: "Af" -> "debit", "Bij" -> "credit" ---
-    direction_map = schema["direction_values"]
-    for internal_value, bank_value in direction_map.items():
-        if row["direction"] == bank_value:
-            row["direction"] = internal_value
-            break
+    # --- direction + amount ---
+    if schema.get("direction_from_amount_sign"):
+        # geen aparte richting-kolom - het teken van het bedrag bepaalt het
+        if amount_value < 0:
+            row["direction"] = "debit"
+        else:
+            row["direction"] = "credit"
+        row["amount"] = abs(amount_value)
+    else:
+        row["amount"] = amount_value
+        direction_map = schema["direction_values"]
+        for internal_value, bank_value in direction_map.items():
+            if row["direction"] == bank_value:
+                row["direction"] = internal_value
+                break
 
     return row
 
@@ -463,9 +464,9 @@ if __name__ == "__main__":
         cursor = conn.cursor()
 
         for csv_path in files_to_process:
-            schema_path = find_schema_for_file(csv_path.name, schemas_dir)
+            schema_path = get_schema_for_file(csv_path, schemas_dir)
             if schema_path is None:
-                print(f"Skipping {csv_path.name}: no matching schema found.")
+                print(f"Skipping {csv_path.name}: geen schema gevonden of gekozen.")
                 continue
 
             schema = load_schema(schema_path)

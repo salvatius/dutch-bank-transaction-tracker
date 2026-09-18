@@ -14,3 +14,4 @@ finance_*.db
 imports/*.csv
 imports/*.imported
 finance.db-journal
+known_accounts.json

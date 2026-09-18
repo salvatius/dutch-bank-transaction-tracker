@@ -26,8 +26,8 @@ Most budgeting tools either want you to link your bank accounts to a third party
 | Bank | Status |
 |---|---|
 | ING | Supported |
-| Knab | Not yet supported |
-| SNS / ASN | Not yet supported |
+| Knab | Supported |
+| SNS / ASN | Supported |
 
 ## Tech stack
 
@@ -47,6 +47,8 @@ pip install -r requirements.txt
 ```
 
 The database (`finance.db`) is created automatically the first time you run `import.py`.
+
+Copy `known_accounts.example.json` to `known_accounts.json` and add your own bank accounts
 
 ## Usage
 

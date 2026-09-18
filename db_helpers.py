@@ -1,8 +1,13 @@
 import sqlite3
 from pathlib import Path
+import json
+import csv
+import re
+from collections import Counter
 
 BASE_DIR = Path(__file__).parent
 DB_PATH = BASE_DIR / "finance.db"
+KNOWN_ACCOUNTS_PATH = BASE_DIR / "known_accounts.json"
 
 
 def get_connection():
@@ -130,4 +135,91 @@ def create_new_category(cursor):
     new_id = cursor.lastrowid
     print(f"Created category [{new_id}] {main_type} / {subcategory}")
     return new_id
+
+def load_known_accounts(path=KNOWN_ACCOUNTS_PATH):
+    if not path.exists():
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_known_accounts(known_accounts, path=KNOWN_ACCOUNTS_PATH):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(known_accounts, f, indent=4, ensure_ascii=False)
+
+IBAN_PATTERN = re.compile(r'^NL\d{2}[A-Z]{4}\d{10}$')
+
+
+def detect_own_account(csv_path, encoding="utf-8"):
+    """Vind de kolom waarin dezelfde IBAN-achtige waarde op vrijwel elke
+    regel voorkomt - dat is de 'eigen rekening'-kolom, ongeacht schema."""
+    with open(csv_path, "r", encoding=encoding, newline="", errors="ignore") as f:
+        reader = csv.reader(f, delimiter=";", quotechar='"')
+        rows = list(reader)
+
+    if not rows:
+        return None
+
+    total_rows = len(rows)
+    column_values = {}  # kolomindex -> Counter van IBAN-achtige waarden
+
+    for row in rows:
+        for col_index, value in enumerate(row):
+            value = value.strip()
+            if IBAN_PATTERN.match(value):
+                column_values.setdefault(col_index, Counter())[value] += 1
+
+    best_value = None
+    best_ratio = 0.0
+
+    for col_index, counter in column_values.items():
+        value, count = counter.most_common(1)[0]
+        ratio = count / total_rows
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_value = value
+
+    if best_ratio >= 0.5:
+        return best_value
+    return None
+
+
+def get_schema_for_file(csv_path, schemas_dir):
+    """Bepaal het schema via het gedetecteerde eigen rekeningnummer.
+    Vraagt en onthoudt bij een nog-onbekende rekening."""
+    known_accounts = load_known_accounts()
+    own_account = detect_own_account(csv_path)
+
+    if own_account and own_account in known_accounts:
+        return schemas_dir / known_accounts[own_account]
+
+    print(f"\nOnbekend rekeningnummer in {csv_path.name}.")
+    if own_account:
+        print(f"Gedetecteerd rekeningnummer: {own_account}")
+        confirm = input("Is dit correct? (y/n): ").strip().lower()
+        if confirm != "y":
+            own_account = input("Rekeningnummer (IBAN): ").strip()
+    else:
+        own_account = input("Kon geen rekeningnummer detecteren. Voer IBAN handmatig in: ").strip()
+
+    available_schemas = sorted(f.name for f in schemas_dir.glob("*.json"))
+    if not available_schemas:
+        print("Geen schema's gevonden in schemas/.")
+        return None
+
+    print("Beschikbare schema's:")
+    for i, s in enumerate(available_schemas, start=1):
+        print(f"  [{i}] {s}")
+    choice = input("Welk schema hoort hierbij? ").strip()
+
+    if choice.isdigit() and 1 <= int(choice) <= len(available_schemas):
+        schema_file = available_schemas[int(choice) - 1]
+        known_accounts[own_account] = schema_file
+        save_known_accounts(known_accounts)
+        print(f"Onthouden: {own_account} -> {schema_file}")
+        return schemas_dir / schema_file
+
+    print("Ongeldige keuze.")
+    return None
+
 
