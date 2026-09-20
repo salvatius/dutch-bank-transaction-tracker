@@ -1,0 +1,22 @@
+{
+    "bank_name": "SNS",
+    "delimiter": ";",
+    "quotechar": "\"",
+    "encoding": "utf-8",
+    "has_header": true,
+    "decimal_separator": ",",
+    "date_format": "%d-%m-%Y",
+    "direction_from_amount_sign": true,
+    "field_mapping": {
+        "date": "Datum",
+        "description": "Naam",
+        "own_account": "Je rekening",
+        "counter_account": "Van / naar",
+        "code": "Code",
+        "direction": null,
+        "amount": "Bedrag bij / af",
+        "mutation_type": "Type",
+        "notes": "Omschrijving",
+        "balance_after": null
+    }
+}

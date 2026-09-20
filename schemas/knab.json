@@ -1,0 +1,25 @@
+{
+    "bank_name": "Knab",
+    "delimiter": ";",
+    "quotechar": "\"",
+    "encoding": "utf-8",
+    "has_header": true,
+    "decimal_separator": ",",
+    "date_format": "%d-%m-%Y",
+    "field_mapping": {
+        "date": "Transactiedatum",
+        "description": "Tegenrekeninghouder",
+        "own_account": "Rekeningnummer",
+        "counter_account": "Tegenrekeningnummer",
+        "code": null,
+        "direction": "CreditDebet",
+        "amount": "Bedrag",
+        "mutation_type": "Betaalwijze",
+        "notes": "Omschrijving",
+        "balance_after": null
+    },
+    "direction_values": {
+        "debit": "Afschrijvingen",
+        "credit": "Bijschrijvingen"
+    }
+}
