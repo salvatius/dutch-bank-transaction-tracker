@@ -16,6 +16,8 @@ Built as a learning project to go deeper with Python, while solving a real probl
 - **Rule management** — list, reprioritize, edit, or delete rules, including detection of "dead" rules that can never fire because a broader, higher-priority rule already matches everything they would
 - **CSV & Excel export** — export transactions (optionally filtered by date range, category, or uncategorized-only) to a Dutch-formatted CSV or a formatted `.xlsx` file with dropdown data validation on the category columns
 - **Local SQLite storage** — all data stays on your machine, no cloud service involved
+- **Rekeningsaldo-tracking** — leg een openingssaldo per rekening vast (bedrag + datum), waarna het lopend saldo op elke gewenste datum automatisch wordt berekend uit dat ijkpunt plus alle geïmporteerde mutaties — werkt ook met terugwerkende kracht als je oudere jaren later importeert
+- **Rekeningbeheer** (`manage_accounts.py`) — openingssaldi instellen/bijwerken en huidig of historisch saldo per rekening opvragen
 
 ## Why this exists
 
@@ -81,13 +83,17 @@ python export.py --uncategorized
 
 To Excel, with dropdown-validated category columns:
 
+To Excel, with dropdown-validated category columns:
+
 ```bash
 python export_excel.py
+python export_excel.py --account <account number>
 ```
 
-(Same `--from`, `--to`, `--category`, and `--uncategorized` filters apply.)
+(Same `--from`, `--to`, `--category`, `--uncategorized`, and `--account` filters apply. The sheet also shows the applied filters and the start/end balance for the period, per account.)
 
 Exports are written to `exports/`, timestamped, never overwritten.
+- **CSV & Excel export** — export transactions (optionally filtered by date range, category, account, or uncategorized-only) to a Dutch-formatted CSV or a formatted `.xlsx` file with dropdown data validation on the category columns; the Excel export also shows the active filters and the start/end balance for the exported period (per account) at the top of the sheet
 
 ### Manage categories
 
@@ -104,6 +110,14 @@ python manage_rules.py
 ```
 
 List rules (with dead/unreachable rules flagged), change priority, edit conditions, or delete a rule.
+
+### Manage accounts
+
+```bash
+python manage_accounts.py
+```
+
+Set or update an account's opening balance (amount + date), view current balances for all known accounts, or look up a balance as of a specific date.
 
 ## Project status
 

@@ -8,6 +8,7 @@ from collections import Counter
 BASE_DIR = Path(__file__).parent
 DB_PATH = BASE_DIR / "finance.db"
 KNOWN_ACCOUNTS_PATH = BASE_DIR / "known_accounts.json"
+IBAN_PATTERN = re.compile(r'^NL\d{2}[A-Z]{4}\d{10}$')
 
 
 def get_connection():
@@ -56,8 +57,6 @@ def describe_rule(cursor, rule_id):
 
 
 def build_transaction_query(args):
-    """Build a filtered transaction query + params, from a namespace with
-    date_from, date_to, category, uncategorized attributes (any may be missing/None)."""
     query = """
         SELECT t.id, t.date, t.description, t.own_account, t.counter_account,
                t.code, t.direction, t.amount, t.mutation_type, t.notes,
@@ -72,6 +71,7 @@ def build_transaction_query(args):
     date_to = getattr(args, "date_to", None)
     category = getattr(args, "category", None)
     uncategorized = getattr(args, "uncategorized", False)
+    account = getattr(args, "account", None)
 
     if date_from:
         query += " AND t.date >= ?"
@@ -86,6 +86,9 @@ def build_transaction_query(args):
         query += " AND c.main_type = ? AND c.subcategory = ?"
         params.append(main_type.strip())
         params.append(subcategory.strip())
+    if account:
+        query += " AND t.own_account = ?"
+        params.append(account)
 
     query += " ORDER BY t.date, t.id"
     return query, params
@@ -142,13 +145,9 @@ def load_known_accounts(path=KNOWN_ACCOUNTS_PATH):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-
 def save_known_accounts(known_accounts, path=KNOWN_ACCOUNTS_PATH):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(known_accounts, f, indent=4, ensure_ascii=False)
-
-IBAN_PATTERN = re.compile(r'^NL\d{2}[A-Z]{4}\d{10}$')
-
 
 def detect_own_account(csv_path, encoding="utf-8"):
     """Vind de kolom waarin dezelfde IBAN-achtige waarde op vrijwel elke
@@ -222,4 +221,69 @@ def get_schema_for_file(csv_path, schemas_dir):
     print("Ongeldige keuze.")
     return None
 
+def get_opening_balance(cursor, account_number):
+    cursor.execute(
+        "SELECT opening_date, opening_balance FROM account_balances WHERE account_number = ?",
+        (account_number,)
+    )
+    result = cursor.fetchone()
+    if result is None:
+        return None
 
+    opening_date, opening_balance = result
+    if not opening_date or opening_balance in (None, ""):
+        return None
+
+    try:
+        opening_balance = float(str(opening_balance).replace(",", "."))
+    except ValueError:
+        return None
+
+    return opening_date, opening_balance
+
+def set_opening_balance(cursor, account_number, opening_date, opening_balance):
+    cursor.execute("""
+        INSERT INTO account_balances (account_number, opening_date, opening_balance)
+        VALUES (?, ?, ?)
+        ON CONFLICT(account_number) DO UPDATE SET
+            opening_date = excluded.opening_date,
+            opening_balance = excluded.opening_balance
+    """, (account_number, opening_date, opening_balance))
+
+
+def calculate_balance(cursor, account_number, as_of_date=None):
+    """Bereken het saldo van een rekening op een gegeven datum (of de meest
+    recente bekende transactiedatum als geen datum is opgegeven)."""
+    result = get_opening_balance(cursor, account_number)
+    if result is None:
+        return None
+    opening_date, opening_balance = result
+
+    if as_of_date is None:
+        cursor.execute(
+            "SELECT MAX(date) FROM transactions WHERE own_account = ?",
+            (account_number,)
+        )
+        latest = cursor.fetchone()[0]
+        as_of_date = latest if latest else opening_date
+
+    if as_of_date >= opening_date:
+        cursor.execute("""
+            SELECT direction, amount FROM transactions
+            WHERE own_account = ? AND date > ? AND date <= ?
+        """, (account_number, opening_date, as_of_date))
+        rows = cursor.fetchall()
+        net = sum(amount if direction == "credit" else -amount for direction, amount in rows)
+        return opening_balance + net
+    else:
+        cursor.execute("""
+            SELECT direction, amount FROM transactions
+            WHERE own_account = ? AND date > ? AND date <= ?
+        """, (account_number, as_of_date, opening_date))
+        rows = cursor.fetchall()
+        net = sum(amount if direction == "credit" else -amount for direction, amount in rows)
+        return opening_balance - net
+
+def get_opening_balance_date_only(cursor, account_number):
+    result = get_opening_balance(cursor, account_number)
+    return result[0] if result else None
