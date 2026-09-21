@@ -119,6 +119,14 @@ python manage_accounts.py
 
 Set or update an account's opening balance (amount + date), view current balances for all known accounts, or look up a balance as of a specific date.
 
+### Recategorize an existing transaction
+
+```bash
+python recategorize.py
+```
+
+Search for an already-imported transaction (by description, transaction ID, or date), and correct its category. Works for both regular and split transactions — for a split transaction you can update one specific split or redo the whole split's categorization. Manually recategorizing always clears the transaction's link to whichever rule originally categorized it, since that link no longer reflects how the category was actually assigned.
+
 ## Project status
 
 🚧 Actively in development. Current focus: a desktop GUI (tkinter) for reviewing and correcting categorized transactions.
