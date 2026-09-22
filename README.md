@@ -48,7 +48,13 @@ venv\Scripts\activate      # Windows
 pip install -r requirements.txt
 ```
 
-The database (`finance.db`) is created automatically the first time you run `import.py`.
+Initialize the database (creates all tables, and optionally seeds starter categories):
+```bash
+python init_db.py
+```
+
+If a `categories_starter.csv` file (semicolon-separated, columns `main_type;subcategory`) exists in the project root, its contents are offered as starter categories. Otherwise a small built-in example set is offered instead. Either can be skipped — categories can always be added later via `manage_categories.py`.
+
 
 Copy `known_accounts.example.json` to `known_accounts.json` and add your own bank accounts
 

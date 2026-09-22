@@ -24,11 +24,21 @@ def list_accounts(cursor):
 
 def set_balance_interactive(cursor):
     known_accounts = load_known_accounts()
-    print("\nBekende rekeningen:")
-    for account_number in known_accounts:
-        print(f"  {account_number}")
+    if not known_accounts:
+        print("Geen bekende rekeningen gevonden in known_accounts.json.")
+        return
 
-    account_number = input("\nRekeningnummer: ").strip()
+    account_list = list(known_accounts.keys())
+    print("\nBekende rekeningen:")
+    for i, account_number in enumerate(account_list, start=1):
+        print(f"  [{i}] {account_number} ({known_accounts[account_number]})")
+
+    choice = input("\nKies een rekening (nummer): ").strip()
+    if not choice.isdigit() or not (1 <= int(choice) <= len(account_list)):
+        print("Ongeldige keuze.")
+        return
+    account_number = account_list[int(choice) - 1]
+
     opening_date = input("Datum van dit saldo (YYYY-MM-DD): ").strip()
     balance_input = input("Saldo op die datum: ").strip()
 
@@ -41,9 +51,23 @@ def set_balance_interactive(cursor):
     set_opening_balance(cursor, account_number, opening_date, opening_balance)
     print(f"Opgeslagen: {account_number} = {format_amount_nl(opening_balance)} op {opening_date}")
 
-
 def show_balance_as_of(cursor):
-    account_number = input("Rekeningnummer: ").strip()
+    known_accounts = load_known_accounts()
+    if not known_accounts:
+        print("Geen bekende rekeningen gevonden in known_accounts.json.")
+        return
+
+    account_list = list(known_accounts.keys())
+    print("\nBekende rekeningen:")
+    for i, account_number in enumerate(account_list, start=1):
+        print(f"  [{i}] {account_number}")
+
+    choice = input("\nKies een rekening (nummer): ").strip()
+    if not choice.isdigit() or not (1 <= int(choice) <= len(account_list)):
+        print("Ongeldige keuze.")
+        return
+    account_number = account_list[int(choice) - 1]
+
     date_input = input("Saldo per welke datum? (YYYY-MM-DD, leeg = meest recent): ").strip()
     as_of_date = date_input if date_input else None
 
@@ -53,7 +77,6 @@ def show_balance_as_of(cursor):
     else:
         label = as_of_date if as_of_date else "meest recente bekende datum"
         print(f"Saldo op {label}: {format_amount_nl(balance)}")
-
 
 if __name__ == "__main__":
     conn = sqlite3.connect(DB_PATH)

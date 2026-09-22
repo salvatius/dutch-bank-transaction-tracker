@@ -298,9 +298,10 @@ def prompt_for_category(cursor, row):
         for cat_id, main_type, subcategory in categories:
             print(f"  [{cat_id}] {main_type} / {subcategory}")
         if suggested_type and not show_all:
-                    print("  [N] Create a new category")
-                    print("  [X] Split this transaction across multiple categories")
-                    print("  [S] Skip this transaction (leave uncategorized, stop import)")
+            print("  [A] Show all categories instead")
+        print("  [N] Create a new category")
+        print("  [X] Split this transaction across multiple categories")
+        print("  [S] Skip this transaction (leave uncategorized, stop import)")
 
         choice = input("Category ID: ").strip()
 
@@ -326,7 +327,7 @@ def prompt_for_category(cursor, row):
 
         chosen_id = int(choice)
 
-        create_rule = input("Create a rule from this? (y/n): ").strip().lower()
+    create_rule = input("Create a rule from this? (y/n): ").strip().lower()
     if create_rule == "y":
         rule_conditions_to_add = []
 
