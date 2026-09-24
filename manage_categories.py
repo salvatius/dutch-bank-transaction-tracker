@@ -3,10 +3,10 @@ from db_helpers import DB_PATH, create_new_category
 
 
 def list_categories(cursor):
-    cursor.execute("SELECT id, main_type, subcategory FROM categories ORDER BY main_type, subcategory")
+    cursor.execute("SELECT id, main_type, group_name, subcategory FROM categories ORDER BY main_type, group_name, subcategory")
     categories = cursor.fetchall()
-    for cat_id, main_type, subcategory in categories:
-        print(f"  [{cat_id}] {main_type} / {subcategory}")
+    for cat_id, main_type, group_name, subcategory in categories:
+        print(f"  [{cat_id}] {main_type} / {group_name} / {subcategory}")
     return categories
 
 
@@ -32,14 +32,18 @@ def edit_category(cursor):
         return
     cat_id = int(cat_id_input)
 
-    cursor.execute("SELECT main_type, subcategory FROM categories WHERE id = ?", (cat_id,))
+    cursor.execute("SELECT main_type, group_name, subcategory FROM categories WHERE id = ?", (cat_id,))
     result = cursor.fetchone()
     if result is None:
         print("Category not found.")
         return
 
-    current_main_type, current_subcategory = result
-    print(f"Current: {current_main_type} / {current_subcategory}")
+    current_main_type, current_group_name, current_subcategory = result
+    print(f"Current: {current_main_type} / {current_group_name} / {current_subcategory}")
+
+    new_group_name = input(f"New group name [{current_group_name}]: ").strip()
+    if not new_group_name:
+        new_group_name = current_group_name
 
     new_subcategory = input(f"New subcategory name [{current_subcategory}]: ").strip()
     if not new_subcategory:
@@ -69,13 +73,12 @@ def edit_category(cursor):
 
     try:
         cursor.execute(
-            "UPDATE categories SET main_type = ?, subcategory = ? WHERE id = ?",
-            (new_main_type, new_subcategory, cat_id)
+            "UPDATE categories SET main_type = ?, group_name = ?, subcategory = ? WHERE id = ?",
+            (new_main_type, new_group_name, new_subcategory, cat_id)
         )
-        print(f"Updated to: {new_main_type} / {new_subcategory}")
+        print(f"Updated to: {new_main_type} / {new_group_name} / {new_subcategory}")
     except sqlite3.IntegrityError:
-        print(f"'{new_main_type} / {new_subcategory}' already exists as a different category. Cancelled.")
-
+        print(f"'{new_main_type} / {new_group_name} / {new_subcategory}' already exists as a different category. Cancelled.")
 
 def delete_category(cursor):
     list_categories(cursor)

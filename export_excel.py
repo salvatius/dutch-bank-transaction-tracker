@@ -7,7 +7,7 @@ from openpyxl import Workbook
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import PatternFill, Font
-from db_helpers import BASE_DIR, DB_PATH, format_amount_nl, build_transaction_query, get_splits, calculate_balance, load_known_accounts, get_opening_balance_date_only
+from db_helpers import BASE_DIR, DB_PATH, format_amount_nl, build_transaction_query, get_splits, calculate_balance, load_known_accounts, get_opening_balance_date_only, get_category_lists
 
 EXPORTS_DIR = BASE_DIR / "exports"
 
@@ -57,22 +57,14 @@ def get_splits(cursor, transaction_id):
     """, (transaction_id,))
     return cursor.fetchall()
 
-def get_category_lists(cursor):
-    """Return (main_types, subcategories) - flat lists of distinct values."""
-    cursor.execute("SELECT DISTINCT main_type FROM categories ORDER BY main_type")
-    main_types = [row[0] for row in cursor.fetchall()]
 
-    cursor.execute("SELECT DISTINCT subcategory FROM categories ORDER BY subcategory")
-    subcategories = [row[0] for row in cursor.fetchall()]
-
-    return main_types, subcategories
 
 def export_transactions_excel(cursor, args):
     query, params = build_transaction_query(args)
     cursor.execute(query, params)
     transactions = cursor.fetchall()
 
-    main_types, subcategories = get_category_lists(cursor)
+    main_types, group_names, subcategories = get_category_lists(cursor)
 
     wb = Workbook()
     ws = wb.active
@@ -106,30 +98,28 @@ def export_transactions_excel(cursor, args):
                         value=f"{account_number} - Saldo begin: {start_text}   |   Saldo einde: {end_text}")
             current_row += 1
 
-    current_row += 1  # lege regel voor leesbaarheid
+    current_row += 1
 
     header_row = current_row
     headers = [
         "Datum", "Rekening", "Naam / Omschrijving", "Tegenrekening", "Code",
         "Af Bij", "Bedrag (EUR)", "Mutatiesoort", "Mededelingen", "Saldo na mutatie",
-        "income/expense", "category"
+        "income/expense", "group", "category"
     ]
     for col_num, header in enumerate(headers, start=1):
         ws.cell(row=header_row, column=col_num, value=header)
     current_row += 1
 
-    data_start_row = current_row
-
     for (tx_id, date, description, own_account, counter_account, code,
          direction, amount, mutation_type, notes, balance_after,
-         category_id, main_type, subcategory) in transactions:
+         category_id, main_type, group_name, subcategory) in transactions:
 
         af_bij = "Af" if direction == "debit" else "Bij"
         splits = get_splits(cursor, tx_id)
 
-        rows_for_this_tx = splits if splits else [(amount, main_type, subcategory)]
+        rows_for_this_tx = splits if splits else [(amount, main_type, group_name, subcategory)]
 
-        for row_amount, row_main_type, row_subcategory in rows_for_this_tx:
+        for row_amount, row_main_type, row_group_name, row_subcategory in rows_for_this_tx:
             ws.cell(row=current_row, column=1, value=date)
             ws.cell(row=current_row, column=2, value=own_account)
             ws.cell(row=current_row, column=3, value=description)
@@ -142,43 +132,49 @@ def export_transactions_excel(cursor, args):
             ws.cell(row=current_row, column=10,
                     value=format_amount_nl(balance_after) if balance_after is not None else "")
             ws.cell(row=current_row, column=11, value=row_main_type or "")
-            ws.cell(row=current_row, column=12, value=row_subcategory or "")
+            ws.cell(row=current_row, column=12, value=row_group_name or "")
+            ws.cell(row=current_row, column=13, value=row_subcategory or "")
             current_row += 1
 
     last_data_row = current_row - 1
 
-    # --- kleur de dropdown-kolommen lichtblauw ---
+    # --- kleur de dropdown-kolommen lichtblauw (nu K, L, M) ---
     light_blue = PatternFill(start_color="D6E9F8", end_color="D6E9F8", fill_type="solid")
     for row in range(header_row, last_data_row + 1):
         ws.cell(row=row, column=11).fill = light_blue
         ws.cell(row=row, column=12).fill = light_blue
+        ws.cell(row=row, column=13).fill = light_blue
 
-    # --- vetgedrukte headers ---
     bold_font = Font(bold=True)
     for col in range(1, len(headers) + 1):
         ws.cell(row=header_row, column=col).font = bold_font
 
-    # --- autofilter ---
     last_col_letter = get_column_letter(len(headers))
     ws.auto_filter.ref = f"A{header_row}:{last_col_letter}{last_data_row}"
 
-    # --- dropdowns (data validation) ---
+    # --- dropdowns ---
     lists_ws = wb.create_sheet("_lists")
     lists_ws.sheet_state = "hidden"
     for i, value in enumerate(main_types, start=1):
         lists_ws.cell(row=i, column=1, value=value)
-    for i, value in enumerate(subcategories, start=1):
+    for i, value in enumerate(group_names, start=1):
         lists_ws.cell(row=i, column=2, value=value)
+    for i, value in enumerate(subcategories, start=1):
+        lists_ws.cell(row=i, column=3, value=value)
 
     main_type_range = f"_lists!$A$1:$A${len(main_types)}"
-    subcategory_range = f"_lists!$B$1:$B${len(subcategories)}"
+    group_range = f"_lists!$B$1:$B${len(group_names)}"
+    subcategory_range = f"_lists!$C$1:$C${len(subcategories)}"
 
     dv_main = DataValidation(type="list", formula1=f"={main_type_range}", allow_blank=True)
+    dv_group = DataValidation(type="list", formula1=f"={group_range}", allow_blank=True)
     dv_sub = DataValidation(type="list", formula1=f"={subcategory_range}", allow_blank=True)
     ws.add_data_validation(dv_main)
+    ws.add_data_validation(dv_group)
     ws.add_data_validation(dv_sub)
     dv_main.add(f"K{header_row + 1}:K{last_data_row}")
-    dv_sub.add(f"L{header_row + 1}:L{last_data_row}")
+    dv_group.add(f"L{header_row + 1}:L{last_data_row}")
+    dv_sub.add(f"M{header_row + 1}:M{last_data_row}")
 
     for col_num, header in enumerate(headers, start=1):
         col_letter = get_column_letter(col_num)

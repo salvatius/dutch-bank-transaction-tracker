@@ -26,9 +26,9 @@ def format_amount_nl(amount):
 
 
 def get_category_label(cursor, category_id):
-    cursor.execute("SELECT main_type, subcategory FROM categories WHERE id = ?", (category_id,))
+    cursor.execute("SELECT main_type, group_name, subcategory FROM categories WHERE id = ?", (category_id,))
     result = cursor.fetchone()
-    return f"{result[0]} / {result[1]}" if result else "unknown category"
+    return f"{result[0]} / {result[1]} / {result[2]}" if result else "unknown category"
 
 
 def describe_rule(cursor, rule_id):
@@ -60,7 +60,7 @@ def build_transaction_query(args):
     query = """
         SELECT t.id, t.date, t.description, t.own_account, t.counter_account,
                t.code, t.direction, t.amount, t.mutation_type, t.notes,
-               t.balance_after, t.category_id, c.main_type, c.subcategory
+               t.balance_after, t.category_id, c.main_type, c.group_name, c.subcategory
         FROM transactions t
         LEFT JOIN categories c ON t.category_id = c.id
         WHERE 1=1
@@ -82,10 +82,11 @@ def build_transaction_query(args):
     if uncategorized:
         query += " AND t.category_id IS NULL"
     if category:
-        main_type, _, subcategory = category.partition("/")
-        query += " AND c.main_type = ? AND c.subcategory = ?"
-        params.append(main_type.strip())
-        params.append(subcategory.strip())
+        parts = category.split("/")
+        if len(parts) == 3:
+            main_type, group_name, subcategory = (p.strip() for p in parts)
+            query += " AND c.main_type = ? AND c.group_name = ? AND c.subcategory = ?"
+            params.extend([main_type, group_name, subcategory])
     if account:
         query += " AND t.own_account = ?"
         params.append(account)
@@ -96,7 +97,7 @@ def build_transaction_query(args):
 
 def get_splits(cursor, transaction_id):
     cursor.execute("""
-        SELECT ts.amount, c.main_type, c.subcategory
+        SELECT ts.amount, c.main_type, c.group_name, c.subcategory
         FROM transaction_splits ts
         JOIN categories c ON ts.category_id = c.id
         WHERE ts.transaction_id = ?
@@ -115,28 +116,51 @@ def create_new_category(cursor):
     type_map = {"1": "inkomen", "2": "uitgaven", "3": "transfer"}
     if type_choice == "C" or type_choice not in type_map:
         return None
-
     main_type = type_map[type_choice]
-    subcategory = input("New subcategory name: ").strip()
+
+    cursor.execute(
+        "SELECT DISTINCT group_name FROM categories WHERE main_type = ? ORDER BY group_name",
+        (main_type,)
+    )
+    existing_groups = [row[0] for row in cursor.fetchall()]
+
+    if existing_groups:
+        print(f"\nBestaande groepen binnen '{main_type}':")
+        for i, g in enumerate(existing_groups, start=1):
+            print(f"  [{i}] {g}")
+        print("  [N] Nieuwe groep")
+        group_choice = input("Groep: ").strip()
+        if group_choice.isdigit() and 1 <= int(group_choice) <= len(existing_groups):
+            group_name = existing_groups[int(group_choice) - 1]
+        else:
+            group_name = input("Naam nieuwe groep: ").strip()
+    else:
+        group_name = input("Groepnaam: ").strip()
+
+    if not group_name:
+        print("Groepnaam mag niet leeg zijn. Geannuleerd.")
+        return None
+
+    subcategory = input("Subcategorienaam: ").strip()
     if not subcategory:
-        print("Subcategory name cannot be empty. Cancelled.")
+        print("Subcategorienaam mag niet leeg zijn. Geannuleerd.")
         return None
 
     try:
         cursor.execute(
-            "INSERT INTO categories (main_type, subcategory) VALUES (?, ?)",
-            (main_type, subcategory)
+            "INSERT INTO categories (main_type, group_name, subcategory) VALUES (?, ?, ?)",
+            (main_type, group_name, subcategory)
         )
     except sqlite3.IntegrityError:
-        print(f"'{main_type} / {subcategory}' already exists.")
+        print(f"'{main_type} / {group_name} / {subcategory}' bestaat al.")
         cursor.execute(
-            "SELECT id FROM categories WHERE main_type = ? AND subcategory = ?",
-            (main_type, subcategory)
+            "SELECT id FROM categories WHERE main_type = ? AND group_name = ? AND subcategory = ?",
+            (main_type, group_name, subcategory)
         )
         return cursor.fetchone()[0]
 
     new_id = cursor.lastrowid
-    print(f"Created category [{new_id}] {main_type} / {subcategory}")
+    print(f"Aangemaakt [{new_id}] {main_type} / {group_name} / {subcategory}")
     return new_id
 
 def load_known_accounts(path=KNOWN_ACCOUNTS_PATH):
@@ -181,7 +205,6 @@ def detect_own_account(csv_path, encoding="utf-8"):
     if best_ratio >= 0.5:
         return best_value
     return None
-
 
 def get_schema_for_file(csv_path, schemas_dir):
     """Bepaal het schema via het gedetecteerde eigen rekeningnummer.
@@ -250,7 +273,6 @@ def set_opening_balance(cursor, account_number, opening_date, opening_balance):
             opening_balance = excluded.opening_balance
     """, (account_number, opening_date, opening_balance))
 
-
 def calculate_balance(cursor, account_number, as_of_date=None):
     """Bereken het saldo van een rekening op een gegeven datum (of de meest
     recente bekende transactiedatum als geen datum is opgegeven)."""
@@ -287,3 +309,16 @@ def calculate_balance(cursor, account_number, as_of_date=None):
 def get_opening_balance_date_only(cursor, account_number):
     result = get_opening_balance(cursor, account_number)
     return result[0] if result else None
+
+def get_category_lists(cursor):
+    """Return (main_types, group_names, subcategories) - flat lists of distinct values."""
+    cursor.execute("SELECT DISTINCT main_type FROM categories ORDER BY main_type")
+    main_types = [row[0] for row in cursor.fetchall()]
+
+    cursor.execute("SELECT DISTINCT group_name FROM categories ORDER BY group_name")
+    group_names = [row[0] for row in cursor.fetchall()]
+
+    cursor.execute("SELECT DISTINCT subcategory FROM categories ORDER BY subcategory")
+    subcategories = [row[0] for row in cursor.fetchall()]
+
+    return main_types, group_names, subcategories

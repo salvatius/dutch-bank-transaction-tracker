@@ -54,7 +54,7 @@ def search_transactions(cursor):
 
 def show_splits(cursor, transaction_id):
     cursor.execute("""
-        SELECT ts.id, ts.amount, c.main_type, c.subcategory
+        SELECT ts.id, ts.amount, c.main_type, c.group_name, c.subcategory
         FROM transaction_splits ts
         JOIN categories c ON ts.category_id = c.id
         WHERE ts.transaction_id = ?
@@ -63,19 +63,41 @@ def show_splits(cursor, transaction_id):
 
 
 def choose_category(cursor, prompt="Nieuwe categorie"):
-    cursor.execute("SELECT id, main_type, subcategory FROM categories ORDER BY main_type, subcategory")
-    categories = cursor.fetchall()
-    valid_ids = {cat_id for cat_id, _, _ in categories}
-
-    for cat_id, main_type, subcategory in categories:
-        print(f"  [{cat_id}] {main_type} / {subcategory}")
+    cursor.execute("SELECT DISTINCT main_type, group_name FROM categories ORDER BY main_type, group_name")
+    group_rows = cursor.fetchall()
 
     while True:
-        choice = input(f"{prompt}: ").strip()
-        if choice.isdigit() and int(choice) in valid_ids:
-            return int(choice)
-        print(f"'{choice}' is geen geldige categorie-ID.")
+        print(f"\nGroepen ({prompt}):")
+        for i, (main_type, group_name) in enumerate(group_rows, start=1):
+            print(f"  [{i}] {main_type} / {group_name}")
 
+        group_choice = input("Groep: ").strip()
+        if not group_choice.isdigit() or not (1 <= int(group_choice) <= len(group_rows)):
+            print(f"'{group_choice}' is geen geldige groep-keuze.")
+            continue
+
+        selected_main_type, selected_group = group_rows[int(group_choice) - 1]
+
+        cursor.execute(
+            "SELECT id, subcategory FROM categories WHERE main_type = ? AND group_name = ? ORDER BY subcategory",
+            (selected_main_type, selected_group)
+        )
+        subcats = cursor.fetchall()
+        valid_ids = {cat_id for cat_id, _ in subcats}
+
+        print(f"\nSubcategorieën binnen {selected_main_type} / {selected_group}:")
+        for cat_id, subcategory in subcats:
+            print(f"  [{cat_id}] {subcategory}")
+        print("  [B] Terug naar groepen")
+
+        sub_choice = input("Subcategorie: ").strip()
+        if sub_choice.upper() == "B":
+            continue
+        if not sub_choice.isdigit() or int(sub_choice) not in valid_ids:
+            print(f"'{sub_choice}' is geen geldige subcategorie-ID.")
+            continue
+
+        return int(sub_choice)
 
 def recategorize_simple(cursor, transaction_id):
     """Wijzig de categorie van een niet-gesplitste transactie."""

@@ -281,51 +281,70 @@ def prompt_for_category(cursor, row):
     chosen_id = None
 
     while chosen_id is None:
+        # -- stap A: hoofdtype-filter (zoals voorheen) --
         if suggested_type and not show_all:
             cursor.execute(
-                "SELECT id, main_type, subcategory FROM categories "
+                "SELECT DISTINCT main_type, group_name FROM categories "
                 "WHERE main_type = ? OR main_type = 'transfer' "
-                "ORDER BY main_type, subcategory",
+                "ORDER BY main_type, group_name",
                 (suggested_type,)
             )
         else:
             cursor.execute(
-                "SELECT id, main_type, subcategory FROM categories ORDER BY main_type, subcategory"
+                "SELECT DISTINCT main_type, group_name FROM categories ORDER BY main_type, group_name"
             )
-        categories = cursor.fetchall()
-        valid_ids = {cat_id for cat_id, _, _ in categories}
+        group_rows = cursor.fetchall()
 
-        for cat_id, main_type, subcategory in categories:
-            print(f"  [{cat_id}] {main_type} / {subcategory}")
+        print("\nGroepen:")
+        for i, (main_type, group_name) in enumerate(group_rows, start=1):
+            print(f"  [{i}] {main_type} / {group_name}")
         if suggested_type and not show_all:
-            print("  [A] Show all categories instead")
-        print("  [N] Create a new category")
-        print("  [X] Split this transaction across multiple categories")
-        print("  [S] Skip this transaction (leave uncategorized, stop import)")
+            print("  [A] Toon alle groepen")
+        print("  [N] Nieuwe categorie aanmaken")
+        print("  [X] Deze transactie splitsen")
+        print("  [S] Overslaan / import stoppen")
 
-        choice = input("Category ID: ").strip()
+        group_choice = input("Groep: ").strip()
 
-        if choice.upper() == "A" and suggested_type and not show_all:
+        if group_choice.upper() == "A" and suggested_type and not show_all:
             show_all = True
             continue
-
-        if choice.upper() == "N":
+        if group_choice.upper() == "N":
             new_id = create_new_category(cursor)
             if new_id is not None:
                 chosen_id = new_id
             continue
-
-        if choice.upper() == "X":
+        if group_choice.upper() == "X":
             return "SPLIT", None
-
-        if choice.upper() == "S":
+        if group_choice.upper() == "S":
             raise ImportAborted("User chose to stop the import.")
-
-        if not choice.isdigit() or int(choice) not in valid_ids:
-            print(f"'{choice}' is not a valid category ID. Please pick one from the list.")
+        if not group_choice.isdigit() or not (1 <= int(group_choice) <= len(group_rows)):
+            print(f"'{group_choice}' is geen geldige groep-keuze.")
             continue
 
-        chosen_id = int(choice)
+        selected_main_type, selected_group = group_rows[int(group_choice) - 1]
+
+        # -- stap B: subcategorie binnen de gekozen groep --
+        cursor.execute(
+            "SELECT id, subcategory FROM categories WHERE main_type = ? AND group_name = ? ORDER BY subcategory",
+            (selected_main_type, selected_group)
+        )
+        subcats = cursor.fetchall()
+        valid_ids = {cat_id for cat_id, _ in subcats}
+
+        print(f"\nSubcategorieën binnen {selected_main_type} / {selected_group}:")
+        for cat_id, subcategory in subcats:
+            print(f"  [{cat_id}] {subcategory}")
+        print("  [B] Terug naar groepen")
+
+        sub_choice = input("Subcategorie: ").strip()
+        if sub_choice.upper() == "B":
+            continue
+        if not sub_choice.isdigit() or int(sub_choice) not in valid_ids:
+            print(f"'{sub_choice}' is geen geldige subcategorie-ID.")
+            continue
+
+        chosen_id = int(sub_choice)
 
     create_rule = input("Create a rule from this? (y/n): ").strip().lower()
     if create_rule == "y":

@@ -9,8 +9,9 @@ SCHEMA_STATEMENTS = [
     CREATE TABLE IF NOT EXISTS categories (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         main_type TEXT NOT NULL CHECK (main_type IN ('inkomen', 'uitgaven', 'transfer')),
+        group_name TEXT NOT NULL,
         subcategory TEXT NOT NULL,
-        UNIQUE (main_type, subcategory)
+        UNIQUE (main_type, group_name, subcategory)
     )
     """,
     """
@@ -74,14 +75,14 @@ SCHEMA_STATEMENTS = [
 ]
 
 STARTER_CATEGORIES = [
-    ("inkomen", "salaris"),
-    ("inkomen", "verkopen"),
-    ("uitgaven", "boodschappen"),
-    ("uitgaven", "horeca"),
-    ("uitgaven", "benzine"),
-    ("uitgaven", "roken"),
-    ("uitgaven", "afbetaling lening"),
-    ("transfer", "naar spaarrekening"),
+    ("inkomen", "werk", "salaris"),
+    ("inkomen", "werk", "verkopen"),
+    ("uitgaven", "huishouden", "boodschappen"),
+    ("uitgaven", "vaste lasten", "horeca"),
+    ("uitgaven", "vervoer", "benzine"),
+    ("uitgaven", "persoonlijk", "roken"),
+    ("uitgaven", "vaste lasten", "afbetaling lening"),
+    ("transfer", "sparen", "naar spaarrekening"),
 ]
 
 def load_categories_from_csv(path):
@@ -93,9 +94,9 @@ def load_categories_from_csv(path):
 
     start = 1 if rows and rows[0][0].strip().lower() == "main_type" else 0
     categories = [
-        (row[0].strip(), row[1].strip())
+        (row[0].strip(), row[1].strip(), row[2].strip())
         for row in rows[start:]
-        if len(row) >= 2 and row[0].strip() and row[1].strip()
+        if len(row) >= 3 and row[0].strip() and row[1].strip() and row[2].strip()
     ]
     return categories
 
@@ -118,7 +119,7 @@ def init_database():
             ).strip().lower()
             if confirm == "y":
                 cursor.executemany(
-                    "INSERT INTO categories (main_type, subcategory) VALUES (?, ?)",
+                    "INSERT INTO categories (main_type, group_name, subcategory) VALUES (?, ?, ?)",
                     csv_categories
                 )
                 print(f"{len(csv_categories)} categorieën geïmporteerd.")
@@ -130,7 +131,7 @@ def init_database():
             ).strip().lower()
             if add_starters == "y":
                 cursor.executemany(
-                    "INSERT INTO categories (main_type, subcategory) VALUES (?, ?)",
+                    "INSERT INTO categories (main_type, group_name, subcategory) VALUES (?, ?, ?)",
                     STARTER_CATEGORIES
                 )
                 print(f"{len(STARTER_CATEGORIES)} startcategorieën toegevoegd.")

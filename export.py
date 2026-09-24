@@ -27,7 +27,7 @@ def export_transactions(cursor, args):
     fieldnames = [
         "Datum", "Naam / Omschrijving", "Rekening", "Tegenrekening", "Code",
         "Af Bij", "Bedrag (EUR)", "Mutatiesoort", "Mededelingen", "Saldo na mutatie",
-        "income/expense", "category"
+        "income/expense", "group", "category"
     ]
 
     row_count = 0
@@ -37,13 +37,13 @@ def export_transactions(cursor, args):
 
         for (tx_id, date, description, own_account, counter_account, code,
              direction, amount, mutation_type, notes, balance_after,
-             category_id, main_type, subcategory) in transactions:
+             category_id, main_type, group_name, subcategory) in transactions:
 
             af_bij = "Af" if direction == "debit" else "Bij"
             splits = get_splits(cursor, tx_id)
 
             if splits:
-                for split_amount, split_main_type, split_subcategory in splits:
+                for split_amount, split_main_type, split_group_name, split_subcategory in splits:
                     writer.writerow({
                         "Datum": date,
                         "Naam / Omschrijving": description,
@@ -56,6 +56,7 @@ def export_transactions(cursor, args):
                         "Mededelingen": notes,
                         "Saldo na mutatie": format_amount_nl(balance_after) if balance_after is not None else "",
                         "income/expense": split_main_type,
+                        "group": split_group_name,
                         "category": split_subcategory,
                     })
                     row_count += 1
@@ -72,6 +73,7 @@ def export_transactions(cursor, args):
                     "Mededelingen": notes,
                     "Saldo na mutatie": format_amount_nl(balance_after) if balance_after is not None else "",
                     "income/expense": main_type or "",
+                    "group": group_name or "",
                     "category": subcategory or "",
                 })
                 row_count += 1

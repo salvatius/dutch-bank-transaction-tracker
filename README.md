@@ -18,6 +18,7 @@ Built as a learning project to go deeper with Python, while solving a real probl
 - **Local SQLite storage** — all data stays on your machine, no cloud service involved
 - **Rekeningsaldo-tracking** — leg een openingssaldo per rekening vast (bedrag + datum), waarna het lopend saldo op elke gewenste datum automatisch wordt berekend uit dat ijkpunt plus alle geïmporteerde mutaties — werkt ook met terugwerkende kracht als je oudere jaren later importeert
 - **Rekeningbeheer** (`manage_accounts.py`) — openingssaldi instellen/bijwerken en huidig of historisch saldo per rekening opvragen
+**Three-level categories** (main type → group → subcategory) — e.g. `uitgaven / huishouden / boodschappen` — so categorization stays manageable with a large category list; category selection during import and recategorization is group-first, avoiding a long flat list to scroll through
 
 ## Why this exists
 
@@ -53,7 +54,8 @@ Initialize the database (creates all tables, and optionally seeds starter catego
 python init_db.py
 ```
 
-If a `categories_starter.csv` file (semicolon-separated, columns `main_type;subcategory`) exists in the project root, its contents are offered as starter categories. Otherwise a small built-in example set is offered instead. Either can be skipped — categories can always be added later via `manage_categories.py`.
+If a `categories_starter.csv` file (semicolon-separated, columns `main_type;group_name;subcategory`) exists in the project root, its contents are offered as starter categories. Otherwise a small built-in example set is offered instead. Either can be skipped — categories can always be added later via `manage_categories.py`.
+main_type column must contain the types: 'inkomen', 'uitgaven', 'transfer'
 
 
 Copy `known_accounts.example.json` to `known_accounts.json` and add your own bank accounts
@@ -83,7 +85,7 @@ To CSV (Dutch comma-decimal formatting):
 ```bash
 python export.py
 python export.py --from 2026-01-01 --to 2026-01-31
-python export.py --category "uitgaven/boodschappen"
+python export.py --category "uitgaven/huishouden/boodschappen"
 python export.py --uncategorized
 ```
 
