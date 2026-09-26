@@ -22,7 +22,7 @@ def parse_args():
 
 def build_query(args):
     query = """
-        SELECT t.id, t.date, t.description, t.own_account, t.counter_account,
+        SELECT t.id, t.date, t.counter_party_name, t.own_account, t.counter_account,
                t.code, t.direction, t.amount, t.mutation_type, t.notes,
                t.balance_after, t.category_id, c.main_type, c.subcategory
         FROM transactions t
@@ -110,7 +110,7 @@ def export_transactions_excel(cursor, args):
         ws.cell(row=header_row, column=col_num, value=header)
     current_row += 1
 
-    for (tx_id, date, description, own_account, counter_account, code,
+    for (tx_id, date, counter_party_name, own_account, counter_account, code,
          direction, amount, mutation_type, notes, balance_after,
          category_id, main_type, group_name, subcategory) in transactions:
 
@@ -122,7 +122,7 @@ def export_transactions_excel(cursor, args):
         for row_amount, row_main_type, row_group_name, row_subcategory in rows_for_this_tx:
             ws.cell(row=current_row, column=1, value=date)
             ws.cell(row=current_row, column=2, value=own_account)
-            ws.cell(row=current_row, column=3, value=description)
+            ws.cell(row=current_row, column=3, value=counter_party_name)
             ws.cell(row=current_row, column=4, value=counter_account)
             ws.cell(row=current_row, column=5, value=code)
             ws.cell(row=current_row, column=6, value=af_bij)

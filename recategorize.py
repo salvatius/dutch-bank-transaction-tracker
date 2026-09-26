@@ -9,9 +9,9 @@ def search_transactions(cursor):
     if choice == "1":
         term = input("Zoekterm in beschrijving: ").strip()
         cursor.execute("""
-            SELECT id, date, description, amount, direction, category_id
+            SELECT id, date, counter_party_name, amount, direction, category_id
             FROM transactions
-            WHERE description LIKE ?
+            WHERE counter_party_name LIKE ?
             ORDER BY date DESC
         """, (f"%{term}%",))
     elif choice == "2":
@@ -20,14 +20,14 @@ def search_transactions(cursor):
             print("Ongeldig ID.")
             return []
         cursor.execute("""
-            SELECT id, date, description, amount, direction, category_id
+            SELECT id, date, counter_party_name, amount, direction, category_id
             FROM transactions
             WHERE id = ?
         """, (int(tx_id),))
     elif choice == "3":
         date = input("Datum (YYYY-MM-DD): ").strip()
         cursor.execute("""
-            SELECT id, date, description, amount, direction, category_id
+            SELECT id, date, counter_party_name, amount, direction, category_id
             FROM transactions
             WHERE date = ?
             ORDER BY id
@@ -42,11 +42,11 @@ def search_transactions(cursor):
         return []
 
     print()
-    for tx_id, date, description, amount, direction, category_id in results:
+    for tx_id, date, counter_party_name, amount, direction, category_id in results:
         label = get_category_label(cursor, category_id) if category_id else "ONGECATEGORISEERD"
         cursor.execute("SELECT COUNT(*) FROM transaction_splits WHERE transaction_id = ?", (tx_id,))
         split_marker = " [GESPLITST]" if cursor.fetchone()[0] > 0 else ""
-        print(f"[{tx_id}] {date}  {description[:40]:<40}  "
+        print(f"[{tx_id}] {date}  {counter_party_name[:40]:<40}  "
               f"{format_amount_nl(amount)} ({direction})  ->  {label}{split_marker}")
 
     return results

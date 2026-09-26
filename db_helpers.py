@@ -58,7 +58,7 @@ def describe_rule(cursor, rule_id):
 
 def build_transaction_query(args):
     query = """
-        SELECT t.id, t.date, t.description, t.own_account, t.counter_account,
+        SELECT t.id, t.date, t.counter_party_name, t.own_account, t.counter_account,
                t.code, t.direction, t.amount, t.mutation_type, t.notes,
                t.balance_after, t.category_id, c.main_type, c.group_name, c.subcategory
         FROM transactions t

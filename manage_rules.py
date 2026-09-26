@@ -110,7 +110,7 @@ def edit_rule_conditions(cursor):
     new_conditions = []
     while True:
         print("\nAdd a condition. Match on which field?")
-        print("  [1] description")
+        print("  [1] counter_party_name / tegenrekeninghouder")
         print("  [2] notes")
         print("  [3] counter_account")
         print("  [4] own_account")
@@ -118,7 +118,7 @@ def edit_rule_conditions(cursor):
         print("  [6] direction")
         field_choice = input("Choice: ").strip()
         field_map = {
-            "1": "description", "2": "notes", "3": "counter_account",
+            "1": "counter_party_name", "2": "notes", "3": "counter_account",
             "4": "own_account", "5": "amount", "6": "direction",
         }
         field = field_map.get(field_choice)

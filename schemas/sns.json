@@ -9,7 +9,7 @@
     "direction_from_amount_sign": true,
     "field_mapping": {
         "date": "Datum",
-        "description": "Naam",
+        "counter_party_name": "Naam",
         "own_account": "Je rekening",
         "counter_account": "Van / naar",
         "code": "Code",

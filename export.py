@@ -35,7 +35,7 @@ def export_transactions(cursor, args):
         writer = csv.DictWriter(f, fieldnames=fieldnames, delimiter=";", quoting=csv.QUOTE_ALL)
         writer.writeheader()
 
-        for (tx_id, date, description, own_account, counter_account, code,
+        for (tx_id, date, counter_party_name, own_account, counter_account, code,
              direction, amount, mutation_type, notes, balance_after,
              category_id, main_type, group_name, subcategory) in transactions:
 
@@ -46,7 +46,7 @@ def export_transactions(cursor, args):
                 for split_amount, split_main_type, split_group_name, split_subcategory in splits:
                     writer.writerow({
                         "Datum": date,
-                        "Naam / Omschrijving": description,
+                        "Naam / Omschrijving": counter_party_name,
                         "Rekening": own_account,
                         "Tegenrekening": counter_account,
                         "Code": code,
@@ -63,7 +63,7 @@ def export_transactions(cursor, args):
             else:
                 writer.writerow({
                     "Datum": date,
-                    "Naam / Omschrijving": description,
+                    "Naam / Omschrijving": counter_party_name,
                     "Rekening": own_account,
                     "Tegenrekening": counter_account,
                     "Code": code,

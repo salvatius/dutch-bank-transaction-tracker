@@ -26,7 +26,7 @@ SCHEMA_STATEMENTS = [
     CREATE TABLE IF NOT EXISTS rule_conditions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         rule_id INTEGER NOT NULL,
-        field TEXT NOT NULL CHECK (field IN ('description', 'notes', 'amount', 'counter_account', 'own_account', 'direction')),
+        field TEXT NOT NULL CHECK (field IN ('counter_party_name', 'notes', 'amount', 'counter_account', 'own_account', 'direction')),
         match_type TEXT NOT NULL CHECK (match_type IN ('exact', 'contains', 'gt', 'lt', 'gte', 'lte', 'between')),
         value TEXT NOT NULL,
         value2 TEXT,
@@ -39,7 +39,7 @@ SCHEMA_STATEMENTS = [
         hash TEXT NOT NULL UNIQUE,
         bank_name TEXT NOT NULL,
         date TEXT NOT NULL,
-        description TEXT,
+        counter_party_name TEXT,
         own_account TEXT,
         counter_account TEXT,
         code TEXT,

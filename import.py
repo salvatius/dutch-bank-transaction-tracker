@@ -104,7 +104,7 @@ def compute_hash(row, bank_name):
     fields = [
         bank_name,
         row["date"],
-        row["description"] or "",
+        row["counter_party_name"] or "",
         row["own_account"] or "",
         row["counter_account"] or "",
         str(row["amount"]),
@@ -121,7 +121,7 @@ def hash_exists(cursor, row_hash):
 def insert_transaction(cursor, row, bank_name):
     cursor.execute("""
         INSERT INTO transactions (
-            hash, bank_name, date, description, own_account, counter_account,
+            hash, bank_name, date, counter_party_name, own_account, counter_account,
             code, direction, amount, mutation_type, notes, balance_after,
             category_id, rule_id
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -129,7 +129,7 @@ def insert_transaction(cursor, row, bank_name):
         row["hash"],
         bank_name,
         row["date"],
-        row["description"],
+        row["counter_party_name"],
         row["own_account"],
         row["counter_account"],
         row["code"],
@@ -266,7 +266,7 @@ def prompt_for_category(cursor, row):
     """Ask the user to categorize an unmatched transaction, optionally creating a rule."""
     print("\n--- Uncategorized transaction ---")
     print(f"Date:        {row['date']}")
-    print(f"Description: {row['description']}")
+    print(f"Tegenrekeninghouder: {row['counter_party_name']}")
     print(f"Amount:      {row['amount']} ({row['direction']})")
     print(f"Notes:       {row['notes']}")
 
@@ -349,18 +349,25 @@ def prompt_for_category(cursor, row):
     create_rule = input("Create a rule from this? (y/n): ").strip().lower()
     if create_rule == "y":
         rule_conditions_to_add = []
+        cancelled = False
 
         while True:
             print("\nAdd a condition. Match on which field?")
-            print("  [1] description")
+            print("  [1] counter_party_name (tegenrekeninghouder)")
             print("  [2] notes")
             print("  [3] counter_account")
             print("  [4] own_account")
             print("  [5] amount")
             print("  [6] direction")
+            print("  [C] Cancel rule creation (keep the category choice)")
             field_choice = input("Choice: ").strip()
+
+            if field_choice.upper() == "C":
+                cancelled = True
+                break
+        
             field_map = {
-                "1": "description", "2": "notes", "3": "counter_account",
+                "1": "counter_party_name", "2": "notes", "3": "counter_account",
                 "4": "own_account", "5": "amount", "6": "direction",
             }
             field = field_map.get(field_choice)
@@ -375,10 +382,14 @@ def prompt_for_category(cursor, row):
                 mt_map = {"1": "exact", "2": "gt", "3": "lt", "4": "gte", "5": "lte", "6": "between"}
                 match_type = mt_map.get(mt_choice, "exact")
 
-                value = input("Amount value (e.g. 26.89): ").strip()
+                suggested_amount = row.get("amount", "")
+                value = input(f"Amount value [{suggested_amount}]: ").strip()
+                if not value:
+                    value = str(suggested_amount)
+
                 value2 = None
                 if match_type == "between":
-                    value2 = input("Upper bound: ").strip()
+                    value2 = input("Upper bound: ").strip()          
 
             elif field == "direction":
                 print("Match value? [1] debit  [2] credit")
@@ -400,6 +411,8 @@ def prompt_for_category(cursor, row):
             more = input("Add another condition to this rule? (y/n): ").strip().lower()
             if more != "y":
                 break
+        if cancelled or not rule_conditions_to_add:
+            return chosen_id, None
 
         cursor.execute(
             "INSERT INTO rules (category_id, priority) VALUES (?, ?)",
@@ -416,7 +429,7 @@ def prompt_for_category(cursor, row):
 
     return chosen_id, None
 
-def process_file(csv_path, schema, cursor, auto_accept=False):
+def process_file(csv_path, schema, cursor, conn, auto_accept=False):
     print(f"\n=== Processing {csv_path.name} (bank: {schema['bank_name']}) ===")
     raw_rows = read_bank_csv(csv_path, schema)
     print(f"Read {len(raw_rows)} rows")
@@ -445,7 +458,7 @@ def process_file(csv_path, schema, cursor, auto_accept=False):
         else:
             label = get_category_label(cursor, category_id)
             rule_desc = describe_rule(cursor, rule_id)
-            print(f"\nAuto-categorized: {normalized['description']}")
+            print(f"\nAuto-categorized: {normalized['counter_party_name']}")
             print(f"  -> {label}  (matched rule: {rule_desc})")
             confirm = input("Accept? (y = accept, n = choose different category, x = split): ").strip().lower()
             if confirm == "x":
@@ -464,6 +477,7 @@ def process_file(csv_path, schema, cursor, auto_accept=False):
         else:
             insert_transaction(cursor, normalized, schema["bank_name"])
 
+        conn.commit()
         inserted_count += 1
 
     print(f"Inserted: {inserted_count}, Skipped (duplicates): {skipped_count}")
@@ -491,12 +505,10 @@ if __name__ == "__main__":
 
             schema = load_schema(schema_path)
             try:
-                process_file(csv_path, schema, cursor, auto_accept=args.auto_accept)
-                conn.commit()
+                process_file(csv_path, schema, cursor, conn, auto_accept=args.auto_accept)
                 mark_as_imported(csv_path)
             except ImportAborted:
                 print(f"\nImport stopped by user during {csv_path.name}.")
-                conn.commit()
                 print("Rows processed so far in this file were saved. File was NOT marked as imported — rerun to continue where you left off.")
                 break
 
